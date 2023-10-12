@@ -1,0 +1,9 @@
+{
+    "name": "iac-pulumi-01",
+    "main": "index.js",
+    "dependencies": {
+        "@pulumi/aws": "^6.5.0",
+        "@pulumi/awsx": "^1.0.0",
+        "@pulumi/pulumi": "^3.0.0"
+    }
+}
