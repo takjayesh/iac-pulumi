@@ -10,7 +10,7 @@ const existingSubnetCIDR = config.require("existingSubnetCIDR");
 const addressDotQuad = config.require("addressDotQuad");
 const netmaskBits = config.require("netmaskBits");
 const customAmiId = "ami-06db4d78cb1d3bbf9"; 
-const applicationPort = 1234; 
+const applicationPort = config.require("applicationPort");
 
 const privateSubnets = [];
 const publicSubnets = [];
