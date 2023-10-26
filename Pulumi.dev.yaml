@@ -18,5 +18,8 @@ config:
   httpPort: 80
   httpsPort: 443
   protocol: tcp
+  dbName: heakthcheckdb
+  username: csye6225
+  password: adminjayesh
 
 #const customAmiId = "ami-06db4d78cb1d3bbf9";
