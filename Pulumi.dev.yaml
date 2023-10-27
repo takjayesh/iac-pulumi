@@ -18,7 +18,7 @@ config:
   httpPort: 80
   httpsPort: 443
   protocol: tcp
-  dbName: heakthcheckdb
+  dbName: healthcheckdb
   username: csye6225
   password: adminjayesh
 
