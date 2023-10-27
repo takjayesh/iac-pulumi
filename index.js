@@ -10,7 +10,7 @@ const publicSubnetCidr = config.require("publicSubnetCidr");
 const existingSubnetCIDR = config.require("existingSubnetCIDR");
 const addressDotQuad = config.require("addressDotQuad");
 const netmaskBits = config.require("netmaskBits");
-const customAmiId = "ami-092f5d3fe370972ff";
+const customAmiId = "ami-0b2dfed445c807469";
 const applicationPort = config.require("applicationPort");
 const dbName = config.require("dbName");
 const username = config.require("username");
@@ -162,9 +162,9 @@ async function createServices() {
     ],
     egress: [
       {
-        fromPort: 3306,
-        toPort: 3306,
-        protocol: "tcp",
+        fromPort: 0,
+        toPort: 0,
+        protocol: -1,
         cidrBlocks: ["0.0.0.0/0"],
       },
     ],
@@ -266,13 +266,16 @@ async function createServices() {
     keyName: keyPair.keyName,
     tags: userTags("myEc2Instance"),
     userData: pulumi.interpolate`#!/bin/bash
-    sudo rm -rf /home/admin/.env
-    sudo echo "MYSQL_HOST=${rdsInstance.address}" | sudo tee /home/admin/.env
-    sudo echo "MYSQL_USER='${rdsInstance.username}'" | sudo tee -a /home/admin/.env
-    sudo echo "MYSQL_PASSWORD='${rdsInstance.password}'" | sudo tee -a /home/admin/.env
-    sudo echo "MYSQL_DATABASE='${rdsInstance.dbName}'" | sudo tee -a /home/admin/.env
-    sudo echo "MYSQL_DIALECT='${dialect}'" | sudo tee -a /home/admin/.env
-    sudo cat /home/admin/.env
+    sudo rm -rf /opt/csye6225/webapp/.env
+    sudo echo "MYSQL_HOST=${rdsInstance.address}" | sudo tee -a /opt/csye6225/webapp/.env
+    sudo echo "MYSQL_USER='${rdsInstance.username}'" | sudo tee -a /opt/csye6225/webapp/.env
+    sudo echo "MYSQL_PASSWORD='${rdsInstance.password}'" | sudo tee -a /opt/csye6225/webapp/.env
+    sudo echo "MYSQL_DATABASE='${rdsInstance.dbName}'" | sudo tee -a /opt/csye6225/webapp/.env
+    sudo echo "MYSQL_DIALECT='${dialect}'" | sudo tee -a /opt/csye6225/webapp/.env
+    sudo cat /opt/csye6225/webapp/.env
+    sudo systemctl daemon-reload
+    sudo systemctl enable webapp
+    sudo systemctl start webapp
     echo 'Hello from the new EC2 instance';
 `,
     instanceInitiatedShutdownBehavior: 'stop',
