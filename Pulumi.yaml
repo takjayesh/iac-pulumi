@@ -4,3 +4,28 @@ runtime:
   options:
     typescript: false
 description: A minimal AWS JavaScript Pulumi program
+config:
+  aws:profile: demo
+  aws:region: us-east-1
+  vpcName: Assignment4
+  addressDotQuad: 10.0.0.0
+  cidrBlock: 10.0.0.0/20
+  existingSubnetCIDR: 10.0.0.0/28
+  publicSubnetCidr: 0.0.0.0/0
+  netmaskBits: 28
+  my-ami: ami-0bd5e1e09e3506f76
+  applicationPort: 5000
+  publicSSHkey: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDEXDfXrtf7YxbIilz98el0/hMCU5U9S0md9C6GbI+HWGV9YpTwDMkZL01rfO4/kX8Ry1cRVwz8mp1UyvujuVH5BejR9Yrr0mNdUDyVWoyfXmp1YXTgCiXZllOrdm3UYQRNBg3MjEKp3tJvSdV9i4FQhgXj6+6weSRGMso6WT24WfJhrZsPCDFk/hStudCUOC2CLnUB4pk3dEXSFpj+ZzOf6bgfwZDPfcYdlY4c/+XcsALGR87zDC5XdhIftVRhzxDD9wdD2bnNzQS9gtJ9RwrHY6OfglgyBl1/W0jj3K03dS9L6MkSpV9vNluqoCwpMFoqOavowbFIhGyOQFNH8akpHJp+XJQlmwFhTAHOTga4MV50G7ByuZcAuc5G6k82YpaE7eYe4frkDySfG0CgncqY1molwfkAuNAij/wxljZIGHjJDQUVcAsaht0+p3FedStU/xl2jy+QixEPQlRMePQxay5/3UmEJSwVt9Sm0CM7JCNNi+5agxy3XlJI2yUeWyM= jayesh tak@DESKTOP-RFAJMP9
+  subnetCount: 3
+  myVolumeSize: 25
+  myVolumeType: gp2
+  myInstanceType: t2.micro
+  sshPort: 22
+  httpPort: 80
+  httpsPort: 443
+  protocol: tcp
+  dbName: healthcheckdb
+  username: csye6225
+  password: adminjayesh
+
+#const customAmiId = "ami-06db4d78cb1d3bbf9";
