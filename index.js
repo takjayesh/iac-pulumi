@@ -10,7 +10,7 @@ const publicSubnetCidr = config.require("publicSubnetCidr");
 const existingSubnetCIDR = config.require("existingSubnetCIDR");
 const addressDotQuad = config.require("addressDotQuad");
 const netmaskBits = config.require("netmaskBits");
-const customAmiId = "ami-0b2dfed445c807469";
+const customAmiId = "ami-07cac520b0ba60928";
 const applicationPort = config.require("applicationPort");
 const dbName = config.require("dbName");
 const username = config.require("username");
@@ -292,13 +292,29 @@ async function createServices() {
   
   const eip = new aws.ec2.Eip("myEip", {
     instance: appInstance.id,
+    //vpc: true, // make sure the EIP is in the VPC
   });
 
 
-  const eipAssocation = new aws.ec2.EipAssociation("myEipAssociation", {
+  const eipAssociation = new aws.ec2.EipAssociation("myEipAssociation", {
     instanceId: appInstance.id,
     publicIp: eip.publicIp,
-  });
+   // allocationId: eip.allocationId,
+  }, { dependsOn: [appInstance] }); // Making sure the association happens after the instance is created
+
+
+  // Add or Update A record to point to the EC2 instance
+const domainName = "demo.jayeshtak.me"; // replace with your domain name
+const hostedZoneId = "Z05430071KGEB0K2VUTET"; // replace with your hosted zone ID
+
+const aRecord = new aws.route53.Record(`${domainName}-A`, {
+  zoneId: hostedZoneId,
+  name: domainName,
+  type: "A",
+  ttl: 300,
+  records: [eip.publicIp], 
+}, { dependsOn: [eipAssociation] }); // Ensure the record is created after the EIP is associated
+
 
 
 }
