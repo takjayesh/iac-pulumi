@@ -10,7 +10,7 @@ const publicSubnetCidr = config.require("publicSubnetCidr");
 const existingSubnetCIDR = config.require("existingSubnetCIDR");
 const addressDotQuad = config.require("addressDotQuad");
 const netmaskBits = config.require("netmaskBits");
-const customAmiId = "ami-07cac520b0ba60928";
+const customAmiId = "ami-0dbe0090956ef0d0f";
 const applicationPort = config.require("applicationPort");
 const dbName = config.require("dbName");
 const username = config.require("username");
@@ -175,10 +175,39 @@ async function createServices() {
     publicKey: publicSSHkey,
   });
 
+
+  // IAM Role and Policy for EC2
+  const ecRole = new aws.iam.Role("ec2Role", {
+    assumeRolePolicy: {
+      Version: "2012-10-17",
+      Statement: [{
+        Action: "sts:AssumeRole",
+        Effect: "Allow",
+        Principal: {
+          Service: "ec2.amazonaws.com",
+        },
+      }],
+    },
+  });
+
+  const policyAttachment = new aws.iam.PolicyAttachment("cloudWatchAgentServerPolicyAttachment", {
+    policyArn: "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
+    roles: [ecRole.name],
+  });
+
+  const ec2InstanceProfile = new aws.iam.InstanceProfile("ec2InstanceProfile", {
+    role: ecRole.name,
+  });
+
+
+  // -----------------------End of IAM Role and Policy for EC2
+
+
+
   //Create RDS Subnet Group
 
   const rdsSubnets = new aws.rds.SubnetGroup("my-rds-subnets", {
-    subnetIds: [privateSubnets[0].id, privateSubnets[1].id], //  // subnetIds: [publicSubnets[0].id, publicSubnets[1].id],
+    subnetIds: [privateSubnets[0].id, privateSubnets[1].id], // subnetIds: [publicSubnets[0].id, publicSubnets[1].id],
     description: "RDS Subnet Group",
   });
 
@@ -231,7 +260,7 @@ async function createServices() {
     engine: "mysql",
     instanceClass: "db.t2.micro",
     dbSubnetGroupName: rdsSubnets.name, // Use Private subnet for RDS instances
-    availabilityZone: availabilityZones.names[0],
+    //availabilityZone: availabilityZones.names[0],
     publiclyAccessible: false,
     allocatedStorage: 20, // Size in GB
     multiAz: false,
@@ -258,6 +287,8 @@ async function createServices() {
     vpcSecurityGroupIds: [appSecurityGroup.id],
     subnetId: publicSubnets[0].id, // Use the first public subnet
     availabilityZone: availabilityZones.names[0],
+    iamInstanceProfile: ec2InstanceProfile.id,
+    //associatePublicIpAddress: true,  // Check this
     rootBlockDevice: {
       volumeSize: 25,
       volumeType: "gp2",
@@ -271,25 +302,27 @@ async function createServices() {
     sudo echo "MYSQL_USER='${rdsInstance.username}'" | sudo tee -a /opt/csye6225/webapp/.env
     sudo echo "MYSQL_PASSWORD='${rdsInstance.password}'" | sudo tee -a /opt/csye6225/webapp/.env
     sudo echo "MYSQL_DATABASE='${rdsInstance.dbName}'" | sudo tee -a /opt/csye6225/webapp/.env
-    sudo echo "MYSQL_DIALECT='${dialect}'" | sudo tee -a /opt/csye6225/webapp/.env
-    sudo cat /opt/csye6225/webapp/.env
-    sudo systemctl daemon-reload
-    sudo systemctl enable webapp
-    sudo systemctl start webapp
-    echo 'Hello from the new EC2 instance';
-`,
-    instanceInitiatedShutdownBehavior: 'stop',
-    disableApiTermination: false,
-  },{
+    sudo echo "MYSQL_DIALECT='${dialect}'" | sudo tee -a /opt/csye6225/webapp/.env  
+    sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+        -a fetch-config \
+        -m ec2 \
+        -c file:/opt/aws/amazon-cloudwatch-agent/etc/cloudwatch-config.json \
+        -s
+        sudo systemctl daemon-reload
+        sudo systemctl enable webapp
+        sudo systemctl start webapp
+        sudo systemctl enable amazon-cloudwatch-agent
+        sudo systemctl start amazon-cloudwatch-agent`,
+  }, {
     dependsOn: [
-        vpc,
-        ...privateSubnets,  // Assuming privateSubnet is an array
-        ...publicSubnets    // Assuming publicSubnet is an array
+      vpc,
+      ...privateSubnets,  // Assuming privateSubnet is an array
+      ...publicSubnets    // Assuming publicSubnet is an array
     ],
-});
+  });
 
-  
-  
+
+
   const eip = new aws.ec2.Eip("myEip", {
     instance: appInstance.id,
     //vpc: true, // make sure the EIP is in the VPC
@@ -299,23 +332,21 @@ async function createServices() {
   const eipAssociation = new aws.ec2.EipAssociation("myEipAssociation", {
     instanceId: appInstance.id,
     publicIp: eip.publicIp,
-   // allocationId: eip.allocationId,
+    // allocationId: eip.allocationId,
   }, { dependsOn: [appInstance] }); // Making sure the association happens after the instance is created
 
 
   // Add or Update A record to point to the EC2 instance
-const domainName = "demo.jayeshtak.me"; // replace with your domain name
-const hostedZoneId = "Z05430071KGEB0K2VUTET"; // replace with your hosted zone ID
+  const domainName = "demo.jayeshtak.me"; // replace with your domain name
+  const hostedZoneId = "Z05430071KGEB0K2VUTET"; // replace with your hosted zone ID
 
-const aRecord = new aws.route53.Record(`${domainName}-A`, {
-  zoneId: hostedZoneId,
-  name: domainName,
-  type: "A",
-  ttl: 300,
-  records: [eip.publicIp], 
-}, { dependsOn: [eipAssociation] }); // Ensure the record is created after the EIP is associated
-
-
+  const aRecord = new aws.route53.Record(`${domainName}-A`, {
+    zoneId: hostedZoneId,
+    name: domainName,
+    type: "A",
+    ttl: 300,
+    records: [eip.publicIp],
+  }, { dependsOn: [eipAssociation] }); // Ensure the record is created after the EIP is associated
 
 }
 
