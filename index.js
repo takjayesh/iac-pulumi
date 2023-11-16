@@ -10,12 +10,11 @@ const publicSubnetCidr = config.require("publicSubnetCidr");
 const existingSubnetCIDR = config.require("existingSubnetCIDR");
 const addressDotQuad = config.require("addressDotQuad");
 const netmaskBits = config.require("netmaskBits");
-const customAmiId = "ami-0dbe0090956ef0d0f";
+const customAmiId = "ami-0c36fcc9a16c0431a";
 const applicationPort = config.require("applicationPort");
 const dbName = config.require("dbName");
 const username = config.require("username");
 const password = config.require("password");
-
 
 const privateSubnets = [];
 const publicSubnets = [];
@@ -131,16 +130,12 @@ async function createServices() {
     });
   });
 
-  // Create an Application Security Group
-  const appSecurityGroup = new aws.ec2.SecurityGroup("appSecurityGroup", {
+
+  // A8 -->Create a Security Group for Load Balancer
+  const lbSecurityGroup = new aws.ec2.SecurityGroup("lbSecurityGroup", {
     vpcId: vpc.id,
+    description: "Security group for Load Balancer",
     ingress: [
-      {
-        protocol: "tcp",
-        fromPort: 22,
-        toPort: 22,
-        cidrBlocks: ["0.0.0.0/0"], // Allow SSH from anywhere
-      },
       {
         protocol: "tcp",
         fromPort: 80,
@@ -153,11 +148,34 @@ async function createServices() {
         toPort: 443,
         cidrBlocks: ["0.0.0.0/0"], // Allow HTTPS from anywhere
       },
+    ],
+    egress: [
+      {
+        fromPort: 0,
+        toPort: 0,
+        protocol: -1,
+        cidrBlocks: ["0.0.0.0/0"], // Allow all outbound traffic
+      },
+    ],
+    tags: userTags("lb-security-group"),
+  });
+
+
+  // Update the App Security Group
+  const appSecurityGroup = new aws.ec2.SecurityGroup("appSecurityGroup", {
+    vpcId: vpc.id,
+    ingress: [
+      {
+        protocol: "tcp",
+        fromPort: 22,
+        toPort: 22,
+        securityGroups: [lbSecurityGroup.id], // Allow SSH only from Load Balancer Security Group
+      },
       {
         protocol: "tcp",
         fromPort: applicationPort,
         toPort: applicationPort,
-        cidrBlocks: ["0.0.0.0/0"], // Allow your application traffic from anywhere
+        securityGroups: [lbSecurityGroup.id], // Allow application traffic only from Load Balancer Security Group
       },
     ],
     egress: [
@@ -169,7 +187,9 @@ async function createServices() {
       },
     ],
 
+    tags: userTags("app-security-group"),
   });
+
 
   const keyPair = new aws.ec2.KeyPair("mySSHKey", {
     publicKey: publicSSHkey,
@@ -201,8 +221,6 @@ async function createServices() {
 
 
   // -----------------------End of IAM Role and Policy for EC2
-
-
 
   //Create RDS Subnet Group
 
@@ -278,76 +296,178 @@ async function createServices() {
   });
 
 
+  // After RDS Instance is created, use its address in the user data script
+  const userDataScript = pulumi.all([rdsInstance.address, rdsInstance.username, rdsInstance.password, rdsInstance.dbName]).apply(([address, username, password, dbName]) => {
+    return `#!/bin/bash
+sudo rm -rf /opt/csye6225/webapp/.env
+sudo echo "MYSQL_HOST=${address}" | sudo tee -a /opt/csye6225/webapp/.env
+sudo echo "MYSQL_USER='${username}'" | sudo tee -a /opt/csye6225/webapp/.env
+sudo echo "MYSQL_PASSWORD='${password}'" | sudo tee -a /opt/csye6225/webapp/.env
+sudo echo "MYSQL_DATABASE='${dbName}'" | sudo tee -a /opt/csye6225/webapp/.env
+sudo echo "MYSQL_DIALECT='${dialect}'" | sudo tee -a /opt/csye6225/webapp/.env
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+    -a fetch-config \
+    -m ec2 \
+    -c file:/opt/aws/amazon-cloudwatch-agent/etc/cloudwatch-config.json \
+    -s
+sudo systemctl daemon-reload
+sudo systemctl enable webapp
+sudo systemctl start webapp
+sudo systemctl enable amazon-cloudwatch-agent
+sudo systemctl start amazon-cloudwatch-agent
+`;
+  });
 
 
-  // Create an EC2 instance
-  const appInstance = new aws.ec2.Instance("appInstance", {
-    instanceType: "t2.micro",
-    ami: customAmiId,
-    vpcSecurityGroupIds: [appSecurityGroup.id],
-    subnetId: publicSubnets[0].id, // Use the first public subnet
-    availabilityZone: availabilityZones.names[0],
-    iamInstanceProfile: ec2InstanceProfile.id,
-    //associatePublicIpAddress: true,  // Check this
-    rootBlockDevice: {
-      volumeSize: 25,
-      volumeType: "gp2",
-      deleteOnTermination: true,
+  const userDataBase64 = userDataScript.apply(us => Buffer.from(us).toString("base64"));
+
+  // Create a Target Group for the Load Balancer
+  const appTargetGroup = new aws.lb.TargetGroup("appTargetGroup", {
+    port: applicationPort,
+    protocol: "HTTP",
+    targetType: "instance",
+    vpcId: vpc.id,
+    healthCheck: {
+      enabled: true,
+      matcher: "200",
+      path: "/healthz", // Modify as per your application's health check endpoint
+      protocol: "HTTP",
+      interval: 30,
     },
-    keyName: keyPair.keyName,
-    tags: userTags("myEc2Instance"),
-    userData: pulumi.interpolate`#!/bin/bash
-    sudo rm -rf /opt/csye6225/webapp/.env
-    sudo echo "MYSQL_HOST=${rdsInstance.address}" | sudo tee -a /opt/csye6225/webapp/.env
-    sudo echo "MYSQL_USER='${rdsInstance.username}'" | sudo tee -a /opt/csye6225/webapp/.env
-    sudo echo "MYSQL_PASSWORD='${rdsInstance.password}'" | sudo tee -a /opt/csye6225/webapp/.env
-    sudo echo "MYSQL_DATABASE='${rdsInstance.dbName}'" | sudo tee -a /opt/csye6225/webapp/.env
-    sudo echo "MYSQL_DIALECT='${dialect}'" | sudo tee -a /opt/csye6225/webapp/.env  
-    sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-        -a fetch-config \
-        -m ec2 \
-        -c file:/opt/aws/amazon-cloudwatch-agent/etc/cloudwatch-config.json \
-        -s
-        sudo systemctl daemon-reload
-        sudo systemctl enable webapp
-        sudo systemctl start webapp
-        sudo systemctl enable amazon-cloudwatch-agent
-        sudo systemctl start amazon-cloudwatch-agent`,
-  }, {
-    dependsOn: [
-      vpc,
-      ...privateSubnets,  // Assuming privateSubnet is an array
-      ...publicSubnets    // Assuming publicSubnet is an array
-    ],
+    tags: userTags("app-target-group"),
   });
 
 
+  // Create Application Load Balancer
+  const appLoadBalancer = new aws.lb.LoadBalancer("appLoadBalancer", {
+    internal: false,
+    loadBalancerType: "application",
+    securityGroups: [lbSecurityGroup.id],
+    subnets: publicSubnets.map(subnet => subnet.id),
+    enableDeletionProtection: false,
+    tags: userTags("app-load-balancer"),
+  });
 
-  const eip = new aws.ec2.Eip("myEip", {
-    instance: appInstance.id,
-    //vpc: true, // make sure the EIP is in the VPC
+  // Create Load Balancer Listener
+  const appListener = new aws.lb.Listener("appListener", {
+    loadBalancerArn: appLoadBalancer.arn,
+    port: 80,
+    protocol: "HTTP",
+    defaultActions: [{
+      type: "forward",
+      targetGroupArn: appTargetGroup.arn,
+    }],
+    tags: userTags("app-listener"),
+  });
+
+  // Create Launch Template for Auto Scaling
+  const appLaunchTemplate = new aws.ec2.LaunchTemplate("appLaunchTemplate", {
+    imageId: customAmiId, // Your custom AMI ID
+    instanceType: "t2.micro",
+    keyName: keyPair, // Replace with your key name "YOUR_AWS_KEYNAME"
+    networkInterfaces: [{
+      associatePublicIpAddress: true,
+      securityGroups: [appSecurityGroup.id],
+    }],
+    userData: userDataBase64, // Use the same user data as your current EC2 instance
+    iamInstanceProfile: {
+      arn: ec2InstanceProfile.arn,
+    },
+    // ... [Any other configurations if necessary]
+    tags: userTags("app-launch-template"),
+  });
+
+  // Create Auto Scaling Group
+  const appAutoScalingGroup = new aws.autoscaling.Group("appAutoScalingGroup", {
+    desiredCapacity: 1,
+    minSize: 1,
+    maxSize: 3,
+    cooldown: 60,
+    targetGroupArns: [appTargetGroup.arn],
+    launchTemplate: {
+      id: appLaunchTemplate.id,
+      version: `$Latest`,
+    },
+    vpcZoneIdentifiers: publicSubnets.map(subnet => subnet.id), // Replace with subnet IDs
+    tags: [{
+      key: "Name",
+      value: "auto-scaling-instance",
+      propagateAtLaunch: true,
+    }],
+    // ... [Any other configurations if necessary]
   });
 
 
-  const eipAssociation = new aws.ec2.EipAssociation("myEipAssociation", {
-    instanceId: appInstance.id,
-    publicIp: eip.publicIp,
-    // allocationId: eip.allocationId,
-  }, { dependsOn: [appInstance] }); // Making sure the association happens after the instance is created
+  // Create Scale Up Policy
+  const scaleUpPolicy = new aws.autoscaling.Policy("scaleUpPolicy", {
+    scalingAdjustment: 1,
+    adjustmentType: "ChangeInCapacity",
+    cooldown: 60,
+    autoscalingGroupName: appAutoScalingGroup.name,
+    policyType: "SimpleScaling",
+    //estimatedInstanceWarmup: 300,
+  });
 
+  // Create Scale Down Policy
+  const scaleDownPolicy = new aws.autoscaling.Policy("scaleDownPolicy", {
+    scalingAdjustment: -1,
+    adjustmentType: "ChangeInCapacity",
+    cooldown: 60,
+    autoscalingGroupName: appAutoScalingGroup.name,
+    //policyType: "SimpleScaling",
+  });
+
+
+  // CloudWatch Alarm for Scale Up
+  const scaleUpAlarm = new aws.cloudwatch.MetricAlarm("scaleUpAlarm", {
+    metricName: "CPUUtilization",
+    namespace: "AWS/EC2",
+    statistic: "Average",
+    period: 60,
+    evaluationPeriods: 1,
+    threshold: 5,
+    comparisonOperator: "GreaterThanThreshold",
+    alarmActions: [scaleUpPolicy.arn],
+    dimensions: {
+      AutoScalingGroupName: appAutoScalingGroup.name,
+    },
+  });
+
+  // CloudWatch Alarm for Scale Down
+  const scaleDownAlarm = new aws.cloudwatch.MetricAlarm("scaleDownAlarm", {
+    metricName: "CPUUtilization",
+    namespace: "AWS/EC2",
+    statistic: "Average",
+    period: 60,
+    evaluationPeriods: 1,
+    threshold: 3,
+    comparisonOperator: "LessThanThreshold",
+    alarmActions: [scaleDownPolicy.arn],
+    dimensions: {
+      AutoScalingGroupName: appAutoScalingGroup.name,
+    },
+  });
 
   // Add or Update A record to point to the EC2 instance
   const domainName = "demo.jayeshtak.me"; // replace with your domain name
   const hostedZoneId = "Z05430071KGEB0K2VUTET"; // replace with your hosted zone ID
 
-  const aRecord = new aws.route53.Record(`${domainName}-A`, {
+ // After Load Balancer is created, define Route 53 A record
+const aRecord = appLoadBalancer.dnsName.apply(dnsName => {
+  return new aws.route53.Record("demo.jayeshtak.me-A", {
     zoneId: hostedZoneId,
     name: domainName,
     type: "A",
-    ttl: 300,
-    records: [eip.publicIp],
-  }, { dependsOn: [eipAssociation] }); // Ensure the record is created after the EIP is associated
+    aliases: [{
+      name: dnsName,
+      zoneId: appLoadBalancer.zoneId, // Load Balancer Zone ID
+      evaluateTargetHealth: true,
+    }],
+  });
+});
 
 }
 
 createServices();
+
+
