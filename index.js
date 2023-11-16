@@ -16,12 +16,9 @@ const dbName = config.require("dbName");
 const username = config.require("username");
 const password = config.require("password");
 
-
 const privateSubnets = [];
 const publicSubnets = [];
 const dialect = 'mysql'
-
-
 
 console.log(cidrBlock);
 
