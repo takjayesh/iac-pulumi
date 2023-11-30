@@ -12,7 +12,9 @@ const publicSubnetCidr = config.require("publicSubnetCidr");
 const existingSubnetCIDR = config.require("existingSubnetCIDR");
 const addressDotQuad = config.require("addressDotQuad");
 const netmaskBits = config.require("netmaskBits");
+
 const customAmiId = "ami-032fcef477bfdfe90";
+
 const applicationPort = config.require("applicationPort");
 const dbName = config.require("dbName");
 const username = config.require("username");
@@ -20,7 +22,9 @@ const password = config.require("password");
 //const lambdaRolePolicyarn = config.require("lamdaRolePolicyConfig");
 const lambdaRolePolicyarn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 
+
 const regione = "us-east-1"
+
 
 const privateSubnets = [];
 const publicSubnets = [];
