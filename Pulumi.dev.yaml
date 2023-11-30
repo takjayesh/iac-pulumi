@@ -21,5 +21,16 @@ config:
   dbName: healthcheckdb
   username: csye6225
   password: adminjayesh
+  lamdaRolePolicyConfig: arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  # lamdaFunctionCodePathcon:
+  
+  # fileName:
+  # accessKeyIdEnv:
+  # secertAccessKeyEnv:
+  # sourceEmail:
+  # BucketName:
+  # GcpProject:
+  # GcpProjectAccid:
+  # bucketLocation: 
 
 #const customAmiId = "ami-06db4d78cb1d3bbf9";

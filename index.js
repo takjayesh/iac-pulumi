@@ -1,5 +1,7 @@
 const pulumi = require("@pulumi/pulumi");
 const aws = require("@pulumi/aws");
+const gcp = require("@pulumi/gcp");
+const fs = require('fs');
 const SubnetCIDRAdviser = require("subnet-cidr-calculator");
 
 const config = new pulumi.Config();
@@ -10,11 +12,15 @@ const publicSubnetCidr = config.require("publicSubnetCidr");
 const existingSubnetCIDR = config.require("existingSubnetCIDR");
 const addressDotQuad = config.require("addressDotQuad");
 const netmaskBits = config.require("netmaskBits");
-const customAmiId = "ami-0c36fcc9a16c0431a";
+const customAmiId = "ami-032fcef477bfdfe90";
 const applicationPort = config.require("applicationPort");
 const dbName = config.require("dbName");
 const username = config.require("username");
 const password = config.require("password");
+//const lambdaRolePolicyarn = config.require("lamdaRolePolicyConfig");
+const lambdaRolePolicyarn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+
+const regione = "us-east-1"
 
 const privateSubnets = [];
 const publicSubnets = [];
@@ -273,6 +279,203 @@ async function createServices() {
     ],
   });
 
+
+
+
+//-------------------GCP------------------
+
+// Create a Google Cloud Storage bucket
+const gcpBucket = new gcp.storage.Bucket("csye6225-002775682", {
+  location: "us-east1",
+  storageClass: "STANDARD",
+  forceDestroy: true,
+  //project:  
+  
+});
+
+// Create a Google Service Account
+const serviceAccount = new gcp.serviceaccount.Account("serviceAccount", {
+  accountId: "service-account-id",
+  displayName: "Service Account"
+});
+
+// Create Access Keys for the Google Service Account
+const accessKeys = new gcp.serviceaccount.Key("my-access-keys", {
+  serviceAccountId: serviceAccount.name,
+  publicKeyType : "TYPE_X509_PEM_FILE",
+});
+
+
+// Assign the roles/storage.objectCreator role to the service account for the bucket
+const bucketIAMBinding = new gcp.storage.BucketIAMBinding("bucketIAMBinding", {
+  bucket: gcpBucket.name,
+  members: [serviceAccount.email.apply((e)=>`serviceAccount:${e}`)],
+  role: "roles/storage.objectCreator",
+});
+
+// snstopic
+const snsTopic = new aws.sns.Topic("Submissions");
+
+//Define the IAM Role for Lambda
+const lambdaRole = new aws.iam.Role("lambda_role", {
+  assumeRolePolicy: JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+          Action: "sts:AssumeRole",
+          Principal: {
+              Service: "lambda.amazonaws.com",
+          },
+          Effect: "Allow",
+          Sid: "",
+      }],
+  }),
+});
+
+// SES POLICY FOR LAMBDA
+// Create an SES policy
+const sesPolicy = new aws.iam.Policy("sesPolicy", {
+  name: "SES_Policy",
+  description: "Policy for SES permissions",
+  policy: JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+          Effect: "Allow",
+          Action: [
+              "ses:SendEmail",
+              "ses:SendRawEmail",
+              "ses:SendTemplatedEmail",
+              "ses:SendBulkTemplatedEmail",
+              "ses:SendCustomVerificationEmail",
+              "ses:SendEmailVerification",
+              "ses:SendRawEmail",
+              "ses:SendTemplatedEmail",
+              "ses:VerifyEmailIdentity",
+              "ses:VerifyEmailAddress",
+          ],
+          Resource: "*",
+      },
+  ],
+}),
+});
+
+
+const dynampolicy = new aws.iam.Policy("dynampolicy", {
+  name: "dynampolicy",
+  description: "Policy for Dynamodb permissions",
+  policy: JSON.stringify({
+      Version: "2012-10-17",
+      Statement: [{
+          Effect: "Allow",
+          Action: [
+              "dynamodb:PutItem",
+              "dynamodb:GetItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:BatchWriteItem",
+          ],
+          Resource: "*",
+      },
+  ],
+}),
+});
+
+
+
+// // Attach the IAM Policy for DynamoDB access to the IAM Role
+// const dynamodbPolicyAttachment = new aws.iam.PolicyAttachment("dynamodb_policy_attachment", {
+//   policyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaDynamoDBExecutionRole",
+//   roles: [lambdaRole.name],
+// });
+
+
+// Dyno Table
+const emailTrackingTable = new aws.dynamodb.Table("EmailTrackingTable", {
+  attributes: [
+    { name: "EmailId", type: "S" },
+    { name: "Timestamp", type: "S" },
+    { name: "Status", type: "S" }, // New attribute
+    // Add additional attributes as needed
+  ],
+  hashKey: "EmailId",
+  rangeKey: "Timestamp",
+  billingMode: "PAY_PER_REQUEST",
+  // billingMode: "PROVISIONED",  // Switch to provisioned billing mode
+  // readCapacity: 5,  // Set the desired read capacity units (RCUs)
+  // writeCapacity: 5,
+  globalSecondaryIndexes: [
+      {
+        name: "StatusIndex",
+        hashKey: "Status",
+        projectionType: "ALL",
+      },
+    ],
+  });
+
+
+// // Attach a policy to the role that grants permission to write logs to CloudWatch
+const lambdaRolePolicy = new aws.iam.RolePolicyAttachment("lambdaRolePolicy", {
+  role: lambdaRole.name,
+  policyArn: lambdaRolePolicyarn,
+  
+});
+
+const lambdaRolePolicySES = new aws.iam.RolePolicyAttachment("lambdaRolePolicySES", {
+  role: lambdaRole.name,
+  policyArn: sesPolicy.arn,
+  
+});
+const Dynamodbaccesspolicy = new aws.iam.RolePolicyAttachment("Dynamodbaccesspolicy", {
+  role: lambdaRole.name,
+  // policyArn: "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess",
+  policyArn: dynampolicy.arn,
+ 
+  
+});
+
+// Create the Lambda Function
+const lambdaFunction = new aws.lambda.Function("middleware", {
+  runtime: "nodejs14.x",
+  handler: "index.handler",
+  code: new pulumi.asset.AssetArchive({
+      ".": new pulumi.asset.FileArchive("C:\\Users\\HOME\\Desktop\\Cloud Assignments\\serverless"),
+  }),
+  environment: {
+      variables: {
+          GCS_BUCKET_NAME: "csye6225-002775682", // Replace with your GCS Bucket Name variable
+          MAILGUN_API_KEY: "e6be500cee61e3975b757385138d7481-30b58138-4c1ed760", // Replace with your Mailgun API Key
+          MAILGUN_DOMAIN: "jayeshtak.me", // Replace with your Mailgun Domain
+          MAILGUN_SENDER: "tak.jayesh1993@jayeshtak.me", // Replace with your Mailgun Sender Email
+          DYNAMODB_TABLE: emailTrackingTable.name,
+          AWS_REG: "us-east-1",
+          GCP_SECRET_KEY :  accessKeys.privateKey,
+          GCP_REGION: "us-east1"
+          //PROJECT_ID: serviceAccount.project
+      },
+  },
+  role: lambdaRole.arn,
+  timeout: 30,
+});
+
+// Subscribe the Lambda function to the SNS topic
+const snsTopicSubscription = new aws.sns.TopicSubscription("lambdaSubscription", {
+  protocol: "lambda",
+  endpoint: lambdaFunction.arn,
+  topic: snsTopic.arn, // Replace with your SNS Topic ARN
+});
+
+// Set the Lambda Permission for invoking the function
+const lambdaPermission = new aws.lambda.Permission("function-with-sns", {
+  action: "lambda:InvokeFunction",
+  function: lambdaFunction.name,
+  principal: "sns.amazonaws.com",
+  sourceArn: snsTopic.arn,
+});
+
+
+
+//-------------------GCP------------------
+
+
+
   // Create RDS Instance
   const rdsInstance = new aws.rds.Instance("rdsinstance", {
     engine: "mysql",
@@ -305,6 +508,8 @@ sudo echo "MYSQL_USER='${username}'" | sudo tee -a /opt/csye6225/webapp/.env
 sudo echo "MYSQL_PASSWORD='${password}'" | sudo tee -a /opt/csye6225/webapp/.env
 sudo echo "MYSQL_DATABASE='${dbName}'" | sudo tee -a /opt/csye6225/webapp/.env
 sudo echo "MYSQL_DIALECT='${dialect}'" | sudo tee -a /opt/csye6225/webapp/.env
+sudo echo "TOPIC_ARN='${snsTopic.arn}'" | sudo tee -a /opt/csye6225/webapp/.env
+sudo echo "REGION='${regione}'" | sudo tee -a /opt/csye6225/webapp/.env
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
     -a fetch-config \
     -m ec2 \
