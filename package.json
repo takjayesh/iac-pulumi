@@ -4,7 +4,9 @@
     "dependencies": {
         "@pulumi/aws": "^6.5.0",
         "@pulumi/awsx": "^1.0.0",
+        "@pulumi/gcp": "^7.2.1",
         "@pulumi/pulumi": "^3.0.0",
+        "fs": "^0.0.1-security",
         "subnet-cidr-calculator": "^1.0.12"
     }
 }
