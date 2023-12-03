@@ -12,7 +12,7 @@ const publicSubnetCidr = config.require("publicSubnetCidr");
 const existingSubnetCIDR = config.require("existingSubnetCIDR");
 const addressDotQuad = config.require("addressDotQuad");
 const netmaskBits = config.require("netmaskBits");
-const customAmiId = "ami-032fcef477bfdfe90";
+const customAmiId = "ami-03fac6844603d1201";
 const applicationPort = config.require("applicationPort");
 const dbName = config.require("dbName");
 const username = config.require("username");
@@ -470,11 +470,7 @@ const lambdaPermission = new aws.lambda.Permission("function-with-sns", {
   sourceArn: snsTopic.arn,
 });
 
-
-
 //-------------------GCP------------------
-
-
 
   // Create RDS Instance
   const rdsInstance = new aws.rds.Instance("rdsinstance", {
