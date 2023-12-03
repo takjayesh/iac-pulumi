@@ -20,7 +20,9 @@ const password = config.require("password");
 //const lambdaRolePolicyarn = config.require("lamdaRolePolicyConfig");
 const lambdaRolePolicyarn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 
+
 const regione = "us-east-1"
+
 
 const privateSubnets = [];
 const publicSubnets = [];
