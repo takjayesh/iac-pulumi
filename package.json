@@ -2,6 +2,7 @@
     "name": "iac-pulumi-01",
     "main": "index.js",
     "dependencies": {
+        "@google-cloud/storage": "^7.7.0",
         "@pulumi/aws": "^6.5.0",
         "@pulumi/awsx": "^1.0.0",
         "@pulumi/gcp": "^7.2.1",

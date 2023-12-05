@@ -12,7 +12,7 @@ const publicSubnetCidr = config.require("publicSubnetCidr");
 const existingSubnetCIDR = config.require("existingSubnetCIDR");
 const addressDotQuad = config.require("addressDotQuad");
 const netmaskBits = config.require("netmaskBits");
-const customAmiId = "ami-03fac6844603d1201";
+const customAmiId = "ami-0d47dcbc024b0af3b";
 const applicationPort = config.require("applicationPort");
 const dbName = config.require("dbName");
 const username = config.require("username");
@@ -177,7 +177,8 @@ async function createServices() {
         protocol: "tcp",
         fromPort: 22,
         toPort: 22,
-        securityGroups: [lbSecurityGroup.id], // Allow SSH only from Load Balancer Security Group
+        cidrBlocks: ["0.0.0.0/0"], // Allow SSH from anywhere
+       // securityGroups: [lbSecurityGroup.id], // Allow SSH only from Load Balancer Security Group
       },
       {
         protocol: "tcp",
@@ -442,15 +443,15 @@ const lambdaFunction = new aws.lambda.Function("middleware", {
   }),
   environment: {
       variables: {
-          GCS_BUCKET_NAME: "csye6225-002775682", // Replace with your GCS Bucket Name variable
+          GCS_BUCKET_NAME: "csye6225-002775682-04b4ab1", // Replace with your GCS Bucket Name variable
           MAILGUN_API_KEY: "e6be500cee61e3975b757385138d7481-30b58138-4c1ed760", // Replace with your Mailgun API Key
           MAILGUN_DOMAIN: "jayeshtak.me", // Replace with your Mailgun Domain
           MAILGUN_SENDER: "tak.jayesh1993@jayeshtak.me", // Replace with your Mailgun Sender Email
           DYNAMODB_TABLE: emailTrackingTable.name,
-          AWS_REG: "us-east-1",
+          AWS_REGIONE: "us-east-1",
           GCP_SECRET_KEY :  accessKeys.privateKey,
-          GCP_REGION: "us-east1"
-          //PROJECT_ID: serviceAccount.project
+          GCP_REGION: "us-east1",
+          PROJECT_ID: serviceAccount.project
       },
   },
   role: lambdaRole.arn,
@@ -497,8 +498,10 @@ const lambdaPermission = new aws.lambda.Permission("function-with-sns", {
   });
 
 
+  snsTopic.arn.apply(arn => console.log(arn));
+
   // After RDS Instance is created, use its address in the user data script
-  const userDataScript = pulumi.all([rdsInstance.address, rdsInstance.username, rdsInstance.password, rdsInstance.dbName]).apply(([address, username, password, dbName]) => {
+  const userDataScript = pulumi.all([rdsInstance.address, rdsInstance.username, rdsInstance.password, rdsInstance.dbName,snsTopic.arn]).apply(([address, username, password, dbName, snsTopicArn]) => {
     return `#!/bin/bash
 sudo rm -rf /opt/csye6225/webapp/.env
 sudo echo "MYSQL_HOST=${address}" | sudo tee -a /opt/csye6225/webapp/.env
@@ -506,7 +509,7 @@ sudo echo "MYSQL_USER='${username}'" | sudo tee -a /opt/csye6225/webapp/.env
 sudo echo "MYSQL_PASSWORD='${password}'" | sudo tee -a /opt/csye6225/webapp/.env
 sudo echo "MYSQL_DATABASE='${dbName}'" | sudo tee -a /opt/csye6225/webapp/.env
 sudo echo "MYSQL_DIALECT='${dialect}'" | sudo tee -a /opt/csye6225/webapp/.env
-sudo echo "TOPIC_ARN='${snsTopic.arn}'" | sudo tee -a /opt/csye6225/webapp/.env
+sudo echo "TOPIC_ARN='${snsTopicArn}'" | sudo tee -a /opt/csye6225/webapp/.env
 sudo echo "REGION='${regione}'" | sudo tee -a /opt/csye6225/webapp/.env
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
     -a fetch-config \
