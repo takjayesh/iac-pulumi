@@ -444,7 +444,7 @@ const lambdaFunction = new aws.lambda.Function("middleware", {
   environment: {
       variables: {
           GCS_BUCKET_NAME: "csye6225-002775682-04b4ab1", // Replace with your GCS Bucket Name variable
-          MAILGUN_API_KEY: "e6be500cee61e3975b757385138d7481-30b58138-4c1ed760", // Replace with your Mailgun API Key
+          MAILGUN_API_KEY: "", // Replace with your Mailgun API Key
           MAILGUN_DOMAIN: "jayeshtak.me", // Replace with your Mailgun Domain
           MAILGUN_SENDER: "tak.jayesh1993@jayeshtak.me", // Replace with your Mailgun Sender Email
           DYNAMODB_TABLE: emailTrackingTable.name,
